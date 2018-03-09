@@ -1,7 +1,7 @@
 Apache CarbonData source reading
 =========================
 
-Source:<https://github.com/apache/incubator-carbondata>
+Source:<https://github.com/apache/carbondata>
  
 
 
