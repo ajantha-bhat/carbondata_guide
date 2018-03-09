@@ -1,136 +1,136 @@
-2 **format模块**
+2 **format module**
 
-2.1 **文件目录结构**
+2.1 **File Directory Structure**
 
-CarbonData数据存储在carbon.storelocation配置项指定的位置（在carbon.properties中配置；若未配置则默认为../carbon.store）。
+The CarbonData data is stored in the location specified by the carbon.storelocation configuration item (configured in carbon.properties; defaults to ../carbon.store if it is not configured).
 
- 文件目录结构如图2-1_1所示：
+ The file directory structure is shown in Figure 2-1_1:
 
 <img src="media/2-1_1.png" width = "60%" alt="2-1_1" />
 
-1. carbon.store目录是CarbonData数据存储位置，其下有ModifiedTime.mdt文件和database目录（default database name：default）。ModifiedTime.mdt用文件的修改时间属性记录元数据的时间版本，在drop table和create table时，会更新文件的修改时间
+1. The carbon.store directory is where the CarbonData data is stored, under which is the ModifiedTime.mdt file and the database directory (default database name:default). ModifiedTime.mdt uses the file's modification time property to record the time version of the metadata. When the drop table and create table are updated, the modification time of the file is updated.
 
-2. default目录下有属于该database的用户表目录（例如：user_table  ）。
+2. There is a user table directory (for example: user_table) belonging to the database in the default directory.
 
-3. user_table目录下有Metadata目录和Fact目录
-    
-4. Metadata目录下存储schema文件，tablestatus和字典文件（包括.dict，.dictmeta和.sortindex）共三类元数据数据信息文件。
+3. The user_table directory has the Metadata directory and the Fact directory
+    
+4. The Metadata directory stores schema files, tablestatus, and dictionary files (including .dict, .dictmeta, and .sortindex) in three categories of metadata data information files.
 
-5. Fact目录下存储数据和索引文件，Fact目录有Part0分区目录，其中0是分区编号。
-    
-6. Part0目录下有Segment_0目录，其中0是segment编号。
-    
-7. Segment_0目录下有carbondata和carbonindex两类文件。
+5. The Fact directory stores data and index files. The Fact directory has a Part0 partition directory, where 0 is the partition number.
+    
+6. There is a Segment_0 directory in the Part0 directory, where 0 is the segment number.
+    
+7. The Segment_0 directory has two types of files, carbondata and carbonindex.
 
-2.2 **文件内容详解**
+2.2 **Detailed contents of the file**
 
-创建表时，生成user_table目录，并在Metadata目录下生成schema文件，用于记录表结构。
+When the table is created, the user_table directory is generated and a schema file is generated in the Metadata directory for recording the table structure.
 
-批量加载数据时，每一次批量loading生成一个新的segment目录，调度尽量控制在每个node上启动一个task处理数据加载任务，每个task将生成多个carbondata文件和一个carbonindex文件。
+When loading data in batches, each batch load generates a new segment directory. The scheduler tries to control starting a task on each node to process data load tasks. Each task will generate multiple carbon data files and a carbonindex file.
 
-关于全局字典，若采用two-pass方案，在数据加载前，首先为每个字典编码的列生成对应的dict,dictmeta和sortindex三个文件，可以采用pre-define dictionary方式提供部分字典文件以减少需要通过扫描全量数据生成字典编码的列；也可以采用all dictionary方式提供所有字典编码列的字典文件以避免扫描数据。若采用single-pass方案，在数据加载期间，实时生成全局字典编码，数据加载结束后，讲字典固化到字典文件。
- 
-下面小节依次采用描述carbondata文件格式的thrift文件编译后生成的Java对象逐一详解各个文件内容（也可以直接阅读[格式定义的thrift文件](https://github.com/apache/incubator-carbondata/tree/master/format/src/main/thrift)或者[官网的数据格式介绍](https://github.com/apache/incubator-carbondata/blob/master/docs/file-structure-of-carbondata.md)了解carbondata数据格式）。
+Regarding the global dictionary, if the two-pass scheme is adopted, before the data is loaded, the corresponding dict, dictmeta and sortindex three files are generated for each dictionary coded column. The pre-define dictionary may be used to provide some dictionary files to reduce the need. Generate dictionary-encoded columns by scanning the entire data; you can also use all dictionary to provide dictionary files for all dictionary-encoded columns to avoid scanning data. If the single-pass scheme is adopted, the global dictionary code is generated in real time during data loading. After the data is loaded, the dictionary is cured to a dictionary file.
+ 
+In the following sections, the Java objects generated after compiling the thrift files describing the format of the carbondata files are used to explain the contents of each file one by one (you can also read the thrift file defined by the format directly) (https://github.com/apache/incubator-carbondata/tree). /master/format/src/main/thrift or [Introduction to the official website data format] (https://github.com/apache/incubator-carbondata/blob/master/docs/file-structure-of-carbondata.md) Learn about the carbondata data format).
 
-2.2.1 **Schema文件格式**
+2.2.1 **Schema file format**
 
-schema文件内容如图2-2_1中TableInfo类所示:
+The contents of the schema file are shown in the TableInfo class in Figure 2-2_1:
 
 <img src="media/2-2_1.png" width = "60%" alt="2-2_1" />
 
-1. TableSchema类 
-    TableSchema类并没有记录表名，表名user_table目录名决定。
-    其中tableProperties用来记录table相关的属性， 例如：table_blocksize。
+1. TableSchema class
+    The TableSchema class does not record the table name, and the table name is determined by the user_table directory name.
+    TableProperties is used to record table-related properties, such as table_blocksize.
 
-2. ColumnSchema类
-    encoders用来记录column存储时采用的编码
-    columnProperties用来记录column相关的属性。
+2. ColumnSchema class
+    Encoders used to record the encoding used by the column store
+    columnProperties is used to record column related attributes.
 
-3. BucketingInfo类
-    创建bucket表时可以指定表的bucket数量以及column来splitbuckets。
+3. BucketingInfo class
+    When creating a bucket table, you can specify the bucket number of the table and the column to splitbuckets.
 
-4. DataType类
-    描述了CarbonData支持的数据类型。
+4. DataType class
+    Describes the data types supported by CarbonData.
 
-5. Encoding类
-    CarbonData文件可能用到的几种编码。
+5. Encoding class
+    Several encodings that CarbonData files may use.
 
-2.2.2 **carbondata文件格式**
+2.2.2 **carbondata file format**
 
-carbondata文件由多个blocklet和footer部分组成。blocklet是carbondata文件内部的数据集（最新V3格式，默认配置是64MB）， 每个blocklet包含每个列的一个ColumnChunk，一个ColumnChunk可能包含一个或多个Column Page。
+The carbondata file consists of multiple blocklets and footer sections. The blocklet is the internal dataset of the carbondata file (the latest V3 format, the default configuration is 64MB), each blocklet contains a ColumnChunk for each column, and a ColumnChunk may contain one or more Column Pages.
 
-carbondata文件目前支持V1，V2和V3版本，主要区别在于blocklet部分的变化，下面逐一介绍。
+Carbondata files currently support versions V1, V2, and V3. The main difference is the change in the blocklet section.
 
-**blocklet部分**
- V1: 
- blocket由所有column的data page, RLE page,rowID page组成。由于blocklet内的page是按照page类型聚集在一起的，因此每个column的这3部分数据是在blocklet内分散存储的，在footer部分需要记录全部page的offset和length信息。
+**blocklet section**
+ V1:
+ The blocket consists of all the column's data page, RLE page, and rowID page. Since the pages in the blocklet are grouped according to the page type, the three pieces of data of each column are stored separately in the blocklet. In the footer part, the offset and length information of all pages need to be recorded.
 
 <img src="media/2-3_1.png" width = "25%" alt="2-3_1" />
 
 V2:
-blocklet由所有列的ColumnChunk组成，一个列的ColumnChunk由一个ColumnPage组成，ColumnPage包括data chunk header，data page, RLE page和rowID page。由于ColumnChunk将column的3类Page数据聚集在了一起， 因此，能使用更少的reader完成column数据读取。由于header部分记录了全部page的长度信息，因此，footer部分只需记录ColumnChunk的offset和length，也减小了footer数据量。
+A blocklet consists of ColumnChunks for all columns. A column's ColumnChunk consists of a ColumnPage. The ColumnPage includes a data chunk header, a data page, an RLE page, and a rowID page. Since ColumnChunk aggregates the 3 types of Page data of the column, it can use less readers to complete the column data reading. Since the header part records the length information of all pages, the footer part only needs to record the offset and length of the ColumnChunk and also reduce the amount of footer data.
 
 <img src="media/2-3_2.png" width = "50%" alt="2-3_2" />
 
 V3:
-blocklet也是由所有列的ColumnChunk组成。变化的是一个ColumnChunk由一到多个Column Page组成，Column Page新增加了BlockletMinMaxIndex。
+The blocklet also consists of ColumnChunks for all columns. What's changed is that a ColumnChunk consists of one or more Column Pages, and ColumnPage adds a new BlockletMinMaxIndex.
 
-与V2相比: V2格式的blocklet数据量默认为120000行，而V3格式的blocklet数据量默认为64MB，同样大小的数据文件，footer部分索引元数据信息量可能进一步减少；同时V3格式新增page level的数据过滤，而且每个page数据量默认只有32000行，比V2格式的120000行少了很多，数据过滤的命中精度进一步提示，在解压数据之前，能过滤掉更多的数据。
+Compared with V2: V2 format blocklet data volume defaults to 120,000 lines, while the V3 format blocklet data volume defaults to 64MB, the same size of the data file, footer part of the index metadata information may be further reduced; V3 format added page The level of data filtering, and the default data volume per page is only 32,000 lines, a lot less than the 120,000 lines in the V2 format. The hit accuracy of data filtering further suggests that more data can be filtered out before decompressing data.
 
 <img src="media/2-3_3.png" width = "50%" alt="2-3_3" />
 
-**footer部分**
+**footer section**
 
-footer记录每个carbondata
-file内部全部blocklet数据分布信息以及统计相关的元数据信息(minmax,startkey/endkey)。
+Footer records every carbondata
+All blocklet data distribution information within the file and statistics related metadata information (minmax, startkey/endkey).
 
 <img src="media/2-3_4.png" width = "80%" alt="2-3_4" />
 
-1.  BlockletInfo3用来记录全部ColumnChunk3的offset 和length。
+BlockletInfo3 is used to record the offset and length of all ColumnChunk3s.
 
-2.  SegmentInfo用来记录column数量以及每个column的cardinality。
+2. SegmentInfo is used to record the number of columns and the cardinality of each column.
 
-3.  BlockletIndex包括BlockletMinMaxIndex和BlockletBTreeIndex。
+BlockletIndex includes BlockletMinMaxIndex and BlockletBTreeIndex.
 
-BlockletBTreeIndex用来记录block内所有blocklet的startkey/endkey;查询时通过过滤条件结合mdkey生成查询的startkey/endkey，借助BlocketBtreeIndex可以圈定每个block内满足条件的blocklet范围。
+BlockletBTreeIndex is used to record the startkey/endkey of all the blocklets in the block; the query is used to generate the query's startkey/endkey through filtering conditions combined with mdkey. With BlocketBtreeIndex, the blocklet range that meets the conditions in each block can be delimited.
 
-BlockletMinMaxIndex用来记录blocklet内所有列的min/max值;查询时通过对过滤条件使用min/max检查，可以跳过不满足条件的block/blocklet。
+BlockletMinMaxIndex is used to record the min/max value of all columns in the blocklet; by checking min/max on the filter condition when querying, blocks/blocklets that do not satisfy the condition can be skipped.
 
-2.2.3 **carbonindex文件格式**
+2.2.3 **carbonindex file format**
 
-抽取出footer部分中BlockletIndex部分生成carbonindex文件。批量加载数据，调度尽量控制一个node启一个task，每个task生成多个carbondata文件和一个carbonindex文件。carbonindex文件记录对应task生成的所有carbondata文件内部所有blocklet的index信息。
+The carbonindex file is generated by extracting the BlockletIndex section of the footer section. Bulk load data, scheduling as much as possible to control a node to start a task, each task generates multiple carbondata files and a carbonindex file. The carbonindex file records the index information of all the blocklets inside all carbondata files generated by the task.
 
-如图，一个block对应的索引信息由一个BlockIndex对象记录，包括了carbondata filename，footer offset和BlockletIndex。BlockIndex数据量要比footer少些，在查询时直接使用该文件在driver侧构建索引，而无需跳扫多个数据文件的数据量更大footer部分。
+As shown in the figure, the index information corresponding to a block is recorded by a BlockIndex object, including carbondata filename, footer offset, and BlockletIndex. The BlockIndex data size is less than the footer. When the query is used, the file is directly used to build an index on the driver side without skipping more data in the data file.
 
 <img src="media/2-4_1.png" width = "25%" alt="2-4_1" />
 
-2.2.4 **dictionary 文件格式**
-    
-对于每个字典编码列，均采用３文件存储该列的字典元数据。
- 
-1.  dict file记录某列的distinct value list
+2.2.4 **dictionary file format**
+    
+For each dictionary code column, 3 files are used to store the dictionary metadata for that column.
+ 
+1. dict file records the distinct value list of a column
 
-首次dataloading时，使用某列的distinct value list生成该文件, 文件内的value是无序的;后续采用追加的方式。在dataloading第二步（Data Convert Step），字典编码列会使用字典key替换数据的真实值（value）。
+When dataloading is used for the first time, the file is generated using a column's distinct value list. The value in the file is unordered; In dataloading step (Data Convert Step), the dictionary encoding column will use the dictionary key to replace the data's real value.
 
 <img src="media/2-5_1.png" width = "25%" alt="2-5_1" />
 
-	
-2.  dictmeta记录每次dataloading的新增distinct value的元数据描述
+The
+2. dictmeta records the metadata description of the newly added distinct value for each dataloading
 
-字典缓存使用该信息增量刷新缓存。
+The dictionary cache uses this information to incrementally refresh the cache.
 
 <img src="media/2-5_2.png" width = "25%" alt="2-5_2" />
-	
-3.  sortindex记录字典编码按照value排序后的key的结果集。
+The
+3. sortindex record dictionary coded according to the value of the key result set.
 
-在dataLoading时，如果有新增的字典值，会使用全部的字典编码重新生成sortindex文件。
+In dataLoading, if there is a new dictionary value, the entire dictionary code will be used to regenerate the sortindex file.
 
-基于字典编码列的过滤查询，需要将value的过滤条等价转换为key的过滤条件，使用sortindex文件可以快速构建有序的value序列，以便快速查找value对应的key值，从而加速该转换过程。
+Filtering queries based on dictionary encoding columns requires that the filter bar of value be converted to the filter condition of the key, and the sortindex file can be used to rapidly construct an ordered value sequence so that the key value corresponding to value can be quickly found, thereby speeding up the conversion process.
 
 <img src="media/2-5_3.png" width = "30%" alt="2-5_3" />
 
-2.2.5 **tablestatus 文件格式**
+2.2.5 **tablestatus file format**
 
-tablestatus记录每次加载和合并的segment相关的信息（采用gson格式），包括加载时间,加载状态,segment名称，是否被删除以及合并入的segment名称等等。每次加载或合并完成后，重新生成tablestatusfile。
+Tablestatus records information about each loaded and merged segment (in gson format), including load time, load status, segment name, whether it was deleted, and the name of the merged segment. After each load or merge is complete, regenerate tablestatusfile.
 
 <img src="media/2-6_1.png" width = "25%" alt="2-6_1" />

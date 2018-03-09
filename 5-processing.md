@@ -1,41 +1,41 @@
-5  **processing模块**
+5 **processing module**
 
-5.1  **Global Dictionary**
+5.1 **Global Dictionary**
 
-全局字典编码（目前为表级字典编码）使用统一的整数来代理真实数据，可以起到数据压缩作用，同时基于字典编码分组聚合的计算也更高效。全局字典编码生成过程如图所示，CarbonBlockDistinctValuesCombinRDD计算每个split内字典列的distinct value列表， 然后按照ColumnPartitioner做shuffle分区，每列一个分区。CarbonGlobalDictionaryGenerateRDD每个task处理一个字典列，生成字典文件（或者追加新字典值），刷新sortindex,更新dictmeta。
+Global dictionary encoding (currently a table-level dictionary encoding) uses a uniform integer to represent real data, which can serve as a data compression function. At the same time, the computation of grouping based on dictionary encoding is also more efficient. The global dictionary encoding generation process is as shown in the figure. CarbonBlockDistinctValuesCombinRDD calculates the distinct value list of the dictionary columns in each split, and then performs the shuffle partition according to the ColumnPartitioner, one partition per column. CarbonGlobalDictionaryGenerateRDD handles one dictionary column per task, generates a dictionary file (or appends a new dictionary value), refreshes the sortindex, and updates dictmeta.
 
 <img src="media/5-1_1.png" width = "50%" alt="5-1_1" />
 
-5.2  **DataLoading（数据加载）**
+5.2 **DataLoading**
 
-CSV文件数据加载主流程，如下图所示。首先，CarbonLoaderUtil.nodeBlockMapping将数据块按节点分区。NewCarbonDataLoadRDD采用该节点分区，每个节点启动一个task来处理数据块的加载。DataLoadExecutor.execute执行数据加载，主流程包括图中所示的4个步骤。
+The CSV file data loads the main flow, as shown in the figure below. First, CarbonLoaderUtil.nodeBlockMapping partitions data blocks by node. NewCarbonDataLoadRDD uses this node for partitioning. Each node starts a task to handle the loading of data blocks. DataLoadExecutor.execute performs data loading and the main flow includes the four steps shown in the figure.
 
 <img src="media/5-2_1.png" width = "50%" alt="5-2_1" />
 
-Step1:InputProcessorStepImpl使用CSVInputFormat.CSVRecordReader读取并解析CSV文件。
+Step1: InputProcessorStepImpl uses CSVInputFormat.CSVRecordReader to read and parse the CSV file.
 
-Step2:DataConverterProcessStepImpl用来转换数据，FieldConverter主要有以下实现类，包括字典列，非字典列，直接字典，复杂类型列和度量列转换。
+Step2: DataConverterProcessStepImpl is used to convert data. FieldConverter mainly has the following implementation classes, including dictionary columns, non-dictionary columns, direct dictionaries, complex type columns, and measure column conversions.
 ![5-2_2](media/5-2_2.png)
-Step3: SortProcessorStepImpl将数据按照dimension sort，默认的Sorter实现类是ParallelReadMergeSorterImpl, Sorter主流程如右图所示。
+Step3: SortProcessorStepImpl will be in accordance with the dimension sort, the default Sorter implementation class is ParallelReadMergeSorterImpl, sorter main flow as shown in the right figure.
 
-SortDataRows.addRowBatch方法缓存数据，当数据记录数达到sort buffer size（默认100000）, 调用DataRorterAndWriter 排序并生成tmp file到local disk;当tmpfile数量达到配置的阈值（默认20）调用SortIntermediateFileMerger.startMerge将这些tmpfile归并排序生成big tmp file. 在Step1和Step2的输入数据都完成排序并生成文件（一些big tmpfile
-和不到20个的tmpfile）到tmp目录后，SingleThreadFinalSortFilesMerger.startFinalMerge启动finalmerge，流式归并排序所有的tmpfile,目的是使本节点本次loading的数据有序，并为后续Step4提供数据的流式输入。
+The SortDataRows.addRowBatch method caches data, when the number of data records reaches the sort buffer size (default 100000), calls DataRorterAndWriter to sort and generates a tmp file to the local disk; when the number of tmpfile reaches the configured threshold (default 20), SortIntermediateFileMerger.startMerge calls these tmpfiles Sorting generates big tmp file. The input data in Step1 and Step2 are all sorted and generated files (some big tmpfile
+And less than 20 tmpfile) into the tmp directory, SingleThreadFinalSortFilesMerger.startFinalMerge start finalmerge, stream merge and sort all tmpfile, the purpose is to make this node ordering of the loading data, and provide streaming data for subsequent Step4 .
 
 <img src="media/5-2_3.png" width = "60%" alt="5-2_3" />
 
-Step4:DataWriterProcessorStepImpl用于生成carbondata和carbonindex文件。主流程如下图所示。MultiDimKeyVarLengthGenerator.generateKey为每一行的字典编码dimesion生成MDK。CarbonFactDataHandlerColumnar.addDataToStore缓存MDK编码等数据，记录数达到blockletsize大小后，调用Producer生成Blocklet对象(NodeHolder)。
+Step4: DataWriterProcessorStepImpl is used to generate carbondata and carbonindex files. The main flow is shown below. MultiDimKeyVarLengthGenerator.generateKey generates an MDK for each line of dictionary code dicesion. CarbonFactDataHandlerColumnar.addDataToStore caches data such as MDK encoding. After the number of records reaches the size of the blockletsize, the producer calls the Producer to generate a Blocklet object (NodeHolder).
 
-BlockIndexerStorageForInt/Short处理blocklet内dimension列数据的排序(Array.sort)、生成RowId index(compressMyOwnWay),采用RLE压缩(compressDataMyOwnWay)
+BlockIndexerStorageForInt/Short handles the sorting (Array.sort) of the dimension column data in the blocklet, generates the RowId index (compressMyOwnWay), and uses RLE compression (compressDataMyOwnWay)
 
-HeavyCompressedDoubleArrayDataInMemoryStore处理bloclet内meause类数据的压缩(使用snappy)。
+HeavyCompressedDoubleArrayDataInMemoryStore handles the compression of meause class data within the bloclet (using snappy).
 
-CarbonFactDataWriterImplV2.writerBlockletData将已有的一个blocklet数据写入本地数据文件。如果blocklet累计大小已经达到了table\_blocksize大小，新建carbondata来写入数据。
+CarbonFactDataWriterImplV2.writerBlockletData writes an existing blocklet data to a local data file. If the cumulative size of the blocklet has reached the size of table\_blocksize, create a new carbondata to write the data.
 
-在carbondata file的blocklet写入结束后，调用writeBlockletInfoToFile完成footer部分写入。在本节点task结束后，调用writeIndexFile生成carbonindex文件。
+After the blocklet of the carbondata file is written, call the writeBlockletInfoToFile to complete the writing of the footer. After this node's task is completed, call writeIndexFile to generate the carbonindex file.
 
 <img src="media/5-2_4.png" width = "60%" alt="5-2_4" />
 
-5.3  **Compression Encoding**
+5.3 **Compression Encoding**
 
 1. Snappy Compressor
 
@@ -47,4 +47,4 @@ CarbonFactDataWriterImplV2.writerBlockletData将已有的一个blocklet数据写
 
 5. Direct-Ditionary Encoding
 
-6. RLE(Running Length Encoding)
+6. RLE (Running Length Encoding)
