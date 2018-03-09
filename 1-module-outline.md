@@ -2,7 +2,10 @@
 
 | Folders | Description |
 |-------------|-------|
-Assembly | building a single Jar package mvn clean -DskipTests package -Pdist or mvn clean -DskipTests -Pinclude-all package -Pdist |
+Assembly | building a single Jar package 
+mvn clean -DskipTests package -Pdist 
+or 
+mvn clean -DskipTests -Pinclude-all package -Pdist |
 Bin | provides two Linux shell scripts, carbon-spark-shell and carbon-spark-sql, which can be quickly and easily experienced in local mode |
 Common | Common module, currently only contains logs |
 | conf | Configuration Files carbon.properties.template, dataload.properties.template |
